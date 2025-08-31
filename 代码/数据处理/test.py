@@ -1,30 +1,18 @@
 import re
-import os
 
-def readData(file_path):
-    with open(file_path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    return lines
 
-import re
-
-def extract_TangSan_dialogues(lines):
-    # 改进的正则表达式模式，匹配多种说话方式
-    patterns = [
-        r'唐三.*?["“](.*?)["”]',
-    ]
-    all_dialogues = []
-    for line in lines:
-        for pattern in patterns:
-            dialogues = re.findall(pattern, line)
-            if dialogues:
-                all_dialogues.extend(dialogues)
-                print(dialogues)
-    return all_dialogues
+def find_matches(text):
+    pattern = r'^(?!.*唐三.*“.*”).*“(.*?)”.*$(?<!唐三)'
+    return re.findall(pattern, text)
 
 if __name__ == "__main__":
-    file_path = os.getcwd() + r"\数据处理\NonEmptyData\train_1.txt"
-    lines = readData(file_path)
-    dialogues = extract_TangSan_dialogues(lines)
-    #print(lines[8])
-    print(dialogues)
+    text = [
+        '突然，唐三脸色骤然一变，但很快又释然了，有些苦涩的自言自语道：“该来的终究还是来了。”',
+        '“等一下。”唐大先生终于反应了过来，但是，此时他再说什么都已经晚了。',
+        '二长老一呆，“可是，他偷学了本门……”啊阿斯顿唐三'
+    ]
+
+    for item in text:
+        matches = find_matches(item)
+        if matches:
+            print(f"Matches found in '{item}': {matches}")
