@@ -4,39 +4,52 @@
       <div class="header-left">
         <div class="logo">
           <img src="/favicon.ico" alt="Logo" />
-          <span>AI聊天助手</span>
+          <span>角色扮演AI聊天室</span>
         </div>
       </div>
+
       <div class="header-right">
-        <button class="settings-btn" @click="toggleSettings">
-          <i class="fas fa-cog"></i>
-          111
-        </button>
+        <Setting class="setting-icon" @click="showSettings = true" />
       </div>
     </div>
 
-    <div class="chat-messages" ref="messageContainer">
-      <div v-for="(message, index) in messages" :key="index" 
-           :class="['message', message.role]">
+    <div class="chat-messages" ref="messagesContainer">
+      <div
+        v-for="(message, index) in messages"
+        :key="index"
+        :class="['message', message.role]"
+      >
         <div class="avatar">
-          <img :src="message.role === 'user' ? '/favicon.ico' : '/favicon.ico'" 
-               :alt="message.role">
+          <img
+            :src="message.role === 'user' ? '/favicon.ico' : '/favicon.ico'"
+            :alt="message.role"
+          />
         </div>
+
         <div class="message-content">
-          <div class="message-text" v-html="formatMessage(message.content)"></div>
+          <div class="message-text-content">
+            <div
+              class="message-text"
+              v-html="formatMessage(message.content)"
+            ></div>
+          </div>
           <div class="message-time">{{ message.time }}</div>
         </div>
       </div>
 
-      <div v-if="isLoading" class="message assistant">
+      <!-- 加载状态 -->
+      <div v-if="loading" class="message assistant">
         <div class="avatar">
-          <img src="/favicon.ico" alt="assistant">
+          <img src="/favicon.ico" alt="assistant" />
         </div>
         <div class="message-content">
-          <div class="typing-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
+          <div class="message-text-content">
+            <div class="message-text loading">
+              药老正在思考...
+              <span class="loading-dots">
+                <span>.</span><span>.</span><span>.</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -44,263 +57,219 @@
 
     <div class="chat-input-container">
       <div class="input-wrapper">
-        <textarea 
-          v-model="userInput" 
-          @keydown.enter.prevent="handleEnterKey"
-          @keydown.shift.enter.prevent="newLine"
+        <el-input
+          type="textarea"
           placeholder="输入您的消息..."
-          class="chat-input"
-          rows="1"
-          ref="textarea"
-        ></textarea>
-        <div class="input-actions">
-          <button class="attach-btn" @click="handleAttach">
-            <i class="fas fa-paperclip"></i>
-          </button>
-          <button class="send-btn" @click="sendMessage" :disabled="!userInput.trim()">
-            <i class="fas fa-paper-plane"></i>
-          </button>
+          :autosize="{ minRows: 4, maxRows: 6 }"
+          resize="none"
+          v-model="inputMessage"
+          @keyup.enter="handleSendMessage"
+          :disabled="loading"
+        >
+        </el-input>
+        <div class="send-button-wrapper">
+          <el-button
+            class="send-btn"
+            type="primary"
+            @click="handleSendMessage"
+            :disabled="loading || !inputMessage.trim()"
+            :loading="loading"
+          >
+            {{ loading ? "发送中..." : "发送" }}
+          </el-button>
         </div>
       </div>
     </div>
 
-    <!-- 设置面板 -->
-    <div v-if="showSettings" class="settings-panel">
-      <div class="settings-header">
-        <h3>设置</h3>
-        <button class="close-btn" @click="toggleSettings">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
+    <!-- 设置对话框 -->
+    <el-dialog v-model="showSettings" title="设置" width="400px">
       <div class="settings-content">
-        <div class="setting-item">
-          <label>模型选择</label>
-          <select v-model="selectedModel">
-            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-            <option value="gpt-4">GPT-4</option>
-          </select>
-        </div>
-        <div class="setting-item">
-          <label>温度</label>
-          <input type="range" v-model="temperature" min="0" max="2" step="0.1">
-          <span>{{ temperature }}</span>
-        </div>
-        <div class="setting-item">
-          <label>最大长度</label>
-          <input type="number" v-model="maxLength" min="1" max="4096">
-        </div>
+        <el-form label-width="80px">
+          <el-form-item label="API地址">
+            <el-input v-model="apiBase" placeholder="http://localhost:8000" />
+          </el-form-item>
+          <el-form-item label="最大长度">
+            <el-input-number v-model="maxTokens" :min="100" :max="1000" />
+          </el-form-item>
+          <el-form-item label="温度">
+            <el-slider
+              v-model="temperature"
+              :min="0.1"
+              :max="1.0"
+              :step="0.1"
+            />
+          </el-form-item>
+        </el-form>
       </div>
-    </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, computed } from 'vue'
+import { Setting } from "@element-plus/icons-vue";
+import { ref, reactive, nextTick } from "vue";
+import { ElMessage } from "element-plus";
 
 interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  time: string
+  role: "user" | "assistant";
+  content: string;
+  time: string;
 }
 
-const messages = ref<Message[]>([])
-const userInput = ref('')
-const isLoading = ref(false)
-const showSettings = ref(false)
-const messageContainer = ref<HTMLElement | null>(null)
-const textarea = ref<HTMLTextAreaElement | null>(null)
-const selectedModel = ref('gpt-3.5-turbo')
-const temperature = ref(0.7)
-const maxLength = ref(2048)
+// 响应式数据
+const messages = ref<Message[]>([]);
+const inputMessage = ref<string>("");
+const loading = ref<boolean>(false);
+const messagesContainer = ref<HTMLElement | null>(null);
+const showSettings = ref<boolean>(false);
+
+// API配置
+const apiBase = ref<string>("http://localhost:8000");
+const maxTokens = ref<number>(512);
+const temperature = ref<number>(0.7);
+
+// 工具函数
+const getCurrentTime = (): string => {
+  return new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 // 初始化欢迎消息
-onMounted(() => {
-  addWelcomeMessage()
-})
+messages.value = [
+  {
+    role: "assistant",
+    content: "你好！我是药老，有什么可以帮助你的吗？",
+    time: getCurrentTime(),
+  },
+];
 
-// 添加欢迎消息
-const addWelcomeMessage = () => {
-  const now = new Date()
-  const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+const formatMessage = (content: string): string => {
+  return content.replace(/\n/g, "<br>");
+};
 
-  messages.value.push({
-    role: 'assistant',
-    content: '您好！我是您的AI助手，有什么可以帮助您的吗？',
-    time: timeString
-  })
-
-  scrollToBottom()
-}
-
-// 格式化消息内容（简单处理，实际项目中可能需要更复杂的Markdown渲染）
-const formatMessage = (content: string) => {
-  // 简单的换行处理
-  return content.replace(/\n/g, '<br>')
-}
-
-// 处理Enter键
-const handleEnterKey = () => {
-  if (!userInput.value.trim()) return
-  sendMessage()
-}
-
-// 处理Shift+Enter换行
-const newLine = () => {
-  userInput.value += '\n'
+const scrollToBottom = (): void => {
   nextTick(() => {
-    if (textarea.value) {
-      textarea.value.value = userInput.value
-      adjustTextareaHeight()
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
     }
-  })
-}
+  });
+};
 
-// 自动调整文本框高度
-const adjustTextareaHeight = () => {
-  if (textarea.value) {
-    textarea.value.style.height = 'auto'
-    textarea.value.style.height = Math.min(textarea.value.scrollHeight, 150) + 'px'
-  }
-}
+// 发送消息函数
+const handleSendMessage = async (): Promise<void> => {
+  if (inputMessage.value.trim() === "" || loading.value) return;
 
-// 发送消息
-const sendMessage = async () => {
-  if (!userInput.value.trim()) return
+  const userMessage: Message = {
+    role: "user",
+    content: inputMessage.value.trim(),
+    time: getCurrentTime(),
+  };
 
   // 添加用户消息
-  const now = new Date()
-  const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+  messages.value.push(userMessage);
+  inputMessage.value = "";
+  loading.value = true;
 
-  messages.value.push({
-    role: 'user',
-    content: userInput.value,
-    time: timeString
-  })
+  scrollToBottom();
 
-  const userMessage = userInput.value
-  userInput.value = ''
-  isLoading.value = true
+  try {
+    const response = await fetch(`${apiBase.value}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: messages.value.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+          time: msg.time,
+        })),
+        max_tokens: maxTokens.value,
+        temperature: temperature.value,
+      }),
+    });
 
-  // 重置文本框高度
-  if (textarea.value) {
-    textarea.value.style.height = 'auto'
-  }
-
-  // 滚动到底部
-  await nextTick()
-  scrollToBottom()
-
-  // 模拟AI响应
-  setTimeout(() => {
-    const aiResponse = generateAIResponse(userMessage)
-    messages.value.push({
-      role: 'assistant',
-      content: aiResponse,
-      time: timeString
-    })
-    isLoading.value = false
-    scrollToBottom()
-  }, 1000)
-}
-
-// 生成AI响应（模拟）
-const generateAIResponse = (userMessage: string): string => {
-  // 简单模拟AI响应，实际项目中应该调用API
-  const responses = [
-    '我理解您的问题。这是一个很好的问题，让我来帮您解答。',
-    '根据您的描述，我认为这可能是因为...',
-    '我理解您的困惑，让我为您详细解释一下。',
-    '这是一个有趣的话题，让我分享一些相关信息。',
-    '感谢您的提问，我会尽力为您提供有用的信息。'
-  ]
-
-  // 根据用户消息的关键词生成不同的响应
-  if (userMessage.includes('你好') || userMessage.includes('您好')) {
-    return '您好！很高兴为您服务，请问有什么可以帮助您的吗？'
-  } else if (userMessage.includes('谢谢')) {
-    return '不客气！如果您还有其他问题，随时可以问我。'
-  } else {
-    return responses[Math.floor(Math.random() * responses.length)]
-  }
-}
-
-// 滚动到底部
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messageContainer.value) {
-      messageContainer.value.scrollTop = messageContainer.value.scrollHeight
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        errorData.detail || `HTTP error! status: ${response.status}`
+      );
     }
-  })
-}
 
-// 切换设置面板
-const toggleSettings = () => {
-  showSettings.value = !showSettings.value
-}
+    const data = await response.json();
 
-// 处理附件上传
-const handleAttach = () => {
-  // 实际项目中应该实现文件上传功能
-  alert('附件上传功能待实现')
-}
+    // 添加助手回复
+    messages.value.push({
+      role: "assistant",
+      content: data.content,
+      time: data.time,
+    });
+  } catch (error) {
+    console.error("请求错误:", error);
+    ElMessage.error("发送失败，请检查网络连接或API服务状态");
+
+    // 添加错误回复
+    messages.value.push({
+      role: "assistant",
+      content: "抱歉，我暂时无法回复，请稍后再试。",
+      time: getCurrentTime(),
+    });
+  } finally {
+    loading.value = false;
+    scrollToBottom();
+  }
+};
+
+// 监听Enter键（不带Shift）
+const handleKeyUp = (event: KeyboardEvent) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    handleSendMessage();
+  }
+};
 </script>
 
 <style scoped>
 .chat-container {
   display: flex;
-  flex-direction: column;
   height: 100vh;
+  flex-direction: column;
   background-color: #f5f5f5;
-  font-family: 'Arial', sans-serif;
 }
 
 .chat-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
   background-color: #4a6cf7;
-  color: white;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
+  border-radius: 8px;
+  padding: 10px;
 }
 
 .logo {
   display: flex;
   align-items: center;
+  gap: 10px;
   font-size: 1.2rem;
-  font-weight: bold;
 }
 
 .logo img {
   width: 30px;
   height: 30px;
-  margin-right: 10px;
   border-radius: 50%;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-}
-
-.settings-btn {
-  background: none;
-  border: none;
+.logo span {
   color: white;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 5px;
-  border-radius: 50%;
-  transition: background-color 0.3s;
+  font-weight: bold;
 }
 
-.settings-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+.setting-icon {
+  color: white;
+  width: 1.5rem;
+  cursor: pointer;
 }
 
 .chat-messages {
@@ -314,9 +283,7 @@ const handleAttach = () => {
 
 .message {
   display: flex;
-  gap: 10px;
-  max-width: 80%;
-  animation: fadeIn 0.3s ease-in-out;
+  animation: fadeIn 0.6s ease-out;
 }
 
 .message.user {
@@ -334,6 +301,7 @@ const handleAttach = () => {
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
+  margin: 0 10px;
 }
 
 .avatar img {
@@ -345,15 +313,24 @@ const handleAttach = () => {
 .message-content {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  max-width: 80rem;
+}
+
+.message.user .message-content {
+  align-items: flex-end;
+}
+
+.message.assistant .message-content {
+  align-items: flex-start;
 }
 
 .message-text {
-  padding: 12px 15px;
-  border-radius: 18px;
   background-color: white;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.1);
   line-height: 1.5;
+  word-wrap: break-word;
 }
 
 .message.user .message-text {
@@ -362,170 +339,63 @@ const handleAttach = () => {
 }
 
 .message-time {
-  font-size: 0.75rem;
+  margin-top: 5px;
+  font-size: 0.8rem;
   color: #999;
-  align-self: flex-end;
-}
-
-.typing-indicator {
-  display: flex;
-  padding: 12px 15px;
-  background-color: white;
-  border-radius: 18px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.typing-indicator span {
-  height: 8px;
-  width: 8px;
-  background-color: #999;
-  border-radius: 50%;
-  display: inline-block;
-  margin: 0 2px;
-  animation: typing 1.4s infinite;
-}
-
-.typing-indicator span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
 }
 
 .chat-input-container {
   padding: 15px;
   background-color: white;
   border-top: 1px solid #eee;
+  position: relative;
 }
 
 .input-wrapper {
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
+  margin-bottom: 10px;
 }
 
-.chat-input {
-  flex: 1;
-  border: 1px solid #ddd;
-  border-radius: 20px;
-  padding: 12px 15px;
-  resize: none;
-  font-size: 1rem;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.3s;
+.send-button-wrapper {
+  position: absolute;
+  bottom: 30px;
+  right: 20px;
+  z-index: 10;
 }
 
-.chat-input:focus {
-  border-color: #4a6cf7;
-}
-
-.input-actions {
-  display: flex;
-  gap: 5px;
-}
-
-.attach-btn, .send-btn {
-  background: none;
-  border: none;
-  color: #4a6cf7;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
-  transition: background-color 0.3s;
-}
-
-.send-btn:disabled {
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-.attach-btn:hover, .send-btn:hover:not(:disabled) {
-  background-color: rgba(74, 108, 247, 0.1);
-}
-
-.settings-panel {
-  position: fixed;
-  right: 0;
-  top: 0;
-  height: 100%;
-  width: 300px;
-  background-color: white;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  transform: translateX(0);
-  transition: transform 0.3s ease-in-out;
-}
-
-.settings-panel.hidden {
-  transform: translateX(100%);
-}
-
-.settings-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px;
-  border-bottom: 1px solid #eee;
-}
-
-.settings-header h3 {
-  margin: 0;
-  color: #333;
-}
-
-.close-btn {
-  background: none;
-  border: none;
+.loading {
   color: #666;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 5px;
+  font-style: italic;
 }
 
-.settings-content {
-  padding: 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.loading-dots span {
+  animation: blink 1.4s infinite both;
 }
 
-.setting-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
 }
 
-.setting-item label {
-  font-weight: bold;
-  color: #555;
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
 }
 
-.setting-item select,
-.setting-item input[type="number"] {
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  font-size: 1rem;
-}
-
-.setting-item input[type="range"] {
-  width: 100%;
-}
-
-.setting-item span {
-  align-self: flex-end;
-  color: #666;
+@keyframes blink {
+  0% {
+    opacity: 0.2;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.2;
+  }
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -533,15 +403,7 @@ const handleAttach = () => {
   }
 }
 
-@keyframes typing {
-  0% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-5px);
-  }
-  100% {
-    transform: translateY(0);
-  }
+.settings-content {
+  padding: 10px 0;
 }
 </style>

@@ -4,6 +4,7 @@ import type { RouteRecordRaw } from 'vue-router'
 // 路由配置
 import AppView from '../view/AppView.vue'
 import LoginView from '../view/LoginView.vue'
+import RegisterView from '@/view/RegisterView.vue'
 
 // 定义路由
 const routes: Array<RouteRecordRaw> = [
@@ -17,6 +18,11 @@ const routes: Array<RouteRecordRaw> = [
     path: '/login',
     name: 'Login',
     component: LoginView
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: RegisterView
   }
 ]
 

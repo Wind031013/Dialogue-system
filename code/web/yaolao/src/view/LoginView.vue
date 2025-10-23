@@ -45,7 +45,14 @@
         </div>
         <a href="#" class="forgot-password">忘记密码?</a>
       </div>
-      <el-button class="login-bin" type="primary" loading-icon="Eleme" v-loading="isLoading" @click="handleLogin()">登录</el-button>
+      <el-button
+        class="login-bin"
+        type="primary"
+        loading-icon="Eleme"
+        v-loading="isLoading"
+        @click="handleLogin()"
+        >登录</el-button
+      >
 
       <el-divider class="divider" content-position="center">或者</el-divider>
       <div class="other">
@@ -64,6 +71,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRouter } from "vue-router";
+import { authService } from "@/services/authService";
 
 const router = useRouter();
 const username = ref("");
@@ -77,19 +85,23 @@ const handleLogin = async () => {
   }
   isLoading.value = true;
 
-  // 模拟登录成功
-    if (username.value === 'adm' && password.value === '123') {
-      // 存储登录状态
-      localStorage.setItem('isLoggedIn', 'true')
-      localStorage.setItem('username', username.value)
+  try {
+    const response = await authService.login({
+      username: username.value,
+      password: password.value,
+    });
 
-      // 跳转到聊天界面
-      router.push('/')
-    } else {
-      alert('用户名或密码错误')
+    if (response.success) {
+      localStorage.setItem("isLoggedIn", "true");
+      localStorage.setItem("userInfo", JSON.stringify(response.user));
+      router.push("/");
     }
+  } catch (error: any) {
+    alert(error.message);
+  }
+
   isLoading.value = false;
-}
+};
 </script>
 
 <style scoped>
